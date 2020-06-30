@@ -49,11 +49,11 @@ endm popRegisters
 datos segment
 
     AcerdaDe db "Solo debe ejecutar el programa y jugar.",10,13,7,"Para moverse presione las flechas y para salir ESC",10,13,7,'$'
-    
+    var dw ?
     msgErrorLectura db "Error en la lectura del archivo de origen$"
     errorLect db 0 ; 1 error lectura Nivel
     
-    numNivelRaw db 070
+    numNivelRaw db 000
     numNivelStr db "0000", '$'
 
     indiceExterno db 20
@@ -199,7 +199,7 @@ lecturaNiveles proc near
   sinErrorAbrirFichero:
   MOV handleLectura, ax
 
-  MOV indiceExterno, 19 ;20 * 50 = 10000
+  MOV indiceExterno, 20 ;20 * 50 = 10000
   
     cicloLectura:
       
@@ -214,7 +214,7 @@ lecturaNiveles proc near
       bufferLeyoBien:
 
       MOV bytesBufferLeidos, ax ; mover la cantidad de bytes que leyo        
-      
+      MOV var, ax
       CALL copyBufferToMatrix
 
     condicionCicloLectura:
@@ -255,6 +255,7 @@ lecturaNiveles proc near
 lecturaNiveles endp
 
 copyBufferToMatrix proc near
+  
   pushRegisters 
   ;este metodo recibe el numero de fila en indiceExterno
   ;en el buffer el array a copiar
@@ -395,13 +396,45 @@ copyRowToMatrix proc near
   ret
 copyRowToMatrix endp
 
+printAX proc
+  ; imprime a la salida estándar un número que supone estar en el AX
+  ; supone que es un número positivo y natural en 16 bits.
+  ; lo imprime en decimal.  
+    
+    push AX
+    push BX
+    push CX
+    push DX
+
+    xor cx, cx
+    mov bx, 10
+  ciclo1PAX: xor dx, dx
+      div bx
+      push dx
+      inc cx
+      cmp ax, 0
+      jne ciclo1PAX
+      mov ah, 02h
+  ciclo2PAX: pop DX
+      add dl, 30h
+      int 21h
+      loop ciclo2PAX
+
+    pop DX
+    pop CX
+    pop BX
+    pop AX
+    ret
+printAX endP
+
+
 	inicio: 
 	  
 	mov ax, datos
 	mov ds, ax
 	mov ax, pila
 	mov ss, ax
-	  
+	
 
 	printAcercaDe
 	CALL pressEnterContinueEco
@@ -412,6 +445,9 @@ copyRowToMatrix endp
 
   CALL printMatrix
 
+  printENTER
+  MOV ax, var
+  CALL printAX
 	
 	mov  ax,4C00h
 	int  21h
