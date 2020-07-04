@@ -70,9 +70,10 @@ datos segment
     nombreDrive db "A"
 
     ;matriz de juego
-    matrizSokoban db 1020 dup('!')
+    matrizSokoban db 1040 dup('!')
+    numFilasCargadas db 0
     N db 20
-    M db 51
+    M db 52
 
 datos ends
 
@@ -239,7 +240,8 @@ lecturaNiveles proc near
       JMP cicloLectura
         
     cerrarLecturaArhivo:
-
+      MOV ah, indiceExterno
+      MOV numFilasCargadas, ah
       MOV ah, 3Eh
       MOV bx, handleLectura
       int 21h  
@@ -423,6 +425,9 @@ copyRowToMatrix proc near
   MOV bl, M; cantidad de columnas
   MUL bl
   ADD di, ax; sumar el numero de fila correspondiente
+  MOV cx, bytesBufferLeidos
+  MOV byte ptr [di], cl
+  INC di
   push ds
   pop es
   cld
@@ -489,9 +494,11 @@ printRowMatrix proc near
   MOV bl, M ; tamaño de columnas
   MUL bl
   ADD di, ax; sumar el numero de fila correspondiente
+  INC di
   ;en el di tengo el puntero la fila correcta
 
-  MOV cx, 51 ; imprime toda la fila o cuando llegue a un salto
+  XOR ch, ch
+  MOV cl, M ; imprime toda la fila o cuando llegue a un salto
   ; de linea, lo que suceda primero
   MOV ah, 02h
   cicloPrintRowMatrix:
@@ -507,6 +514,30 @@ printRowMatrix proc near
   popRegisters
   ret
 printRowMatrix endp
+
+printRowSize proc near
+  ;imprime los tamaños de las filas, el tamaño es la cantidad de bytesBufferLeidos
+  ;esta frente del arreglo like pascal
+  pushRegisters
+  XOR ch, ch
+  MOV cl, N
+  cicloPrintRowSize:
+    lea di, matrizSokoban
+    ;calcular el numero de fila
+    MOV al, N
+    SUB al, cl
+    MOV bl, M ; tamaño de columnas
+    MUL bl
+    ADD di, ax; sumar el numero de fila correspondiente
+    MOV al, byte ptr[di]
+    XOR ah, ah
+    CALL printAX
+    printENTER
+  LOOP cicloPrintRowSize
+
+  popRegisters
+  ret
+printRowSize endp
 
 cargaDeNiveles proc near
   ;este procedimiento carga niveles hasta 100, sino encuentra pregunta si desea salir
@@ -547,6 +578,9 @@ cargaDeNiveles proc near
   popRegisters
   ret
 cargaDeNiveles endp
+
+
+
 
 	inicio: 
 	  
