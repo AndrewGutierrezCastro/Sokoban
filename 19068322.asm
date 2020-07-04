@@ -291,10 +291,11 @@ revisarFilaLeida proc near
   
   leyoMasDeUnaFila:
   MOV bytesBufferLeidos, bx ; mover la cantidad de bytes hasta el cambio 
-  ;de linea 
+  INC bx                    ;de linea 
   finalRevisarFilaLeida:
   MOV bx, bytesBufferLeidos
   INC bx
+  INC bx 
   ADD punteroLectura, bx; sumarle al filepointer la cantidad
   ;de bytes leidos, para que la proxima fila empiece a leer
   ;desde el lugar correcto
@@ -372,7 +373,7 @@ printMatrix proc near
   
     MOV al, bl
     CALL printRowMatrix
-  
+    printENTER
   INC bl
   CMP bl, N
   JB cicloPrintMatrix
@@ -579,8 +580,89 @@ cargaDeNiveles proc near
   ret
 cargaDeNiveles endp
 
+imprimirFilaVideo proc near
+  ;se recibe en el si el puntero a la fila
+  pushRegisters
 
+  MOV al, 80
+  MUL indiceExterno
+  shl ax, 1
+  mov di, ax ;posicion en la pantalla
 
+  mov  ax,0B800h
+  mov  es,ax
+
+  mov  cl, byte ptr[si]
+  xor ch, ch
+  inc si
+
+  cicloPrintFilaVideo:    ;Bucle que se encargara de pintar la string
+      mov  al, [si]        ;caracteres de la pantalla para limpiarla
+      mov  ah, 0          ;Fondo azul, letras blancas
+      OR ah, 07h
+      mov  es:[di], ax
+      inc  si             ;Pasamos a apuntar a la siguiente letra del saludo
+      inc  di
+      inc  di
+
+      LOOP cicloPrintFilaVideo
+  popRegisters
+  ret
+imprimirFilaVideo endp
+
+imprimirMatrizVideo proc near
+  CALL limpiarPantalla
+  pushRegisters
+  XOR cx, cx
+  cicloPrintMatrizVideo:
+  
+    lea si, matrizSokoban
+    XOR ax, ax;calcular el numero de fila
+    or al, cl
+    MOV bl, M ; tamaño de columnas
+    MUL bl
+    ADD si, ax; sumar el numero de fila correspondiente
+    MOV indiceExterno, cl
+    INC indiceExterno
+    CALL imprimirFilaVideo
+  
+  INC cl
+  CMP cl, numFilasCargadas
+  JB cicloPrintMatrizVideo
+
+  popRegisters
+  ret
+imprimirMatrizVideo endp
+
+limpiarPantalla proc near
+  PUSH ax
+  PUSH bx
+  PUSH cx
+  PUSH dx
+  PUSH di
+  PUSH si
+  mov  ax,0B800h      ;En esta direccion comienza la memoria de video
+  mov  es,ax          ;Lo cargamos en el segmento extra
+  xor  di,di          ;Ponemos DI=0. Esto equivale a mov di,0, pero
+                     ;xor di,di consume 3 ciclos de reloj y con mov 4
+  mov  cx,80*25       ;El tamaño total es 2000 (80 lineas x 25 columnas)
+
+  _clear:            ;Bucle que se encargara de recorrer los 2000
+                     ;caracteres de la pantalla para limpiarla
+      mov  al,20h    ;20h=" "   Rellenar la pantalla con espacios
+      mov  ah,00h    ;Fondo azul, letras blancas
+      mov  es:[di],ax
+      inc  di
+      inc  di
+      loop _clear
+  POP si
+  POP di
+  POP dx
+  POP cx
+  POP bx
+  POP ax
+  ret
+limpiarPantalla endp
 
 	inicio: 
 	  
@@ -594,7 +676,9 @@ cargaDeNiveles endp
 
 	CALL cargaDeNiveles
   
-  CALL printMatrix
+  ;CALL printMatrix
+  ;CALL pressEnterContinueEco
+  CALL imprimirMatrizVideo
 	
 	mov  ax,4C00h
 	int  21h
