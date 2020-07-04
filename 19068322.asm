@@ -46,12 +46,28 @@ popRegisters macro
   POP ax
 endm popRegisters
 
+printSpace macro 
+  PUSH ax
+  PUSH dx
+  
+  MOV ah, 02h
+  MOV dl, ' '
+  int 21h
+
+  POP dx
+  POP ax
+endm printSpace
+
 datos segment
 
-    AcerdaDe db "Solo debe ejecutar el programa y jugar.",10,13,7,"Para moverse presione las flechas y para salir ESC",10,13,7,'$'
+    AcerdaDe db "Solo debe ejecutar el programa y jugar.",10,13,7
+    db "Para moverse presione las flechas y para salir ESC",10,13,7,'$'
+
     var dw ?
     msgErrorLectura db "Error en la lectura del archivo de origen$"
-    msgLimiteNiveles db "Se buscaron mas niveles y no se pudo cargar ninguno, desea salir?",10,13,7,"Presione ESC",10,13,7,"Si quiere volver a empezar desde 0 presione cualquier otra tecla",10,13,7,'$'
+    msgLimiteNiveles db "Se buscaron mas niveles y no se pudo cargar ninguno, desea salir?",10,13,7
+                    db "Presione ESC",10,13,7,"Si quiere volver a empezar desde 0 presione cualquier otra tecla",10,13,7,'$'
+    msgTeclaPresionada db "Se presiono la tecla",10,13,7,'$'
     errorLect db 0 ; 1 error lectura Nivel, 0 sin errores
     
     numNivelRaw db 000
@@ -71,11 +87,20 @@ datos segment
 
     ;matriz de juego
     matrizSokoban db 1040 dup('!')
+    matrizSoloNivel DB 1040 dup('!')
     numFilasCargadas db 0
-    kirstein db 0,0
+    kirstein db 0,0,'K'
     N db 20
     M db 52
+    muro db 'M'
+    espacio db '.'
+    caja db 'X'
+    zonaEntrega db 'O'
 
+    ;movimientoSokoban
+    x db 0 
+    y db 0
+    salir dw 0
 datos ends
 
 pila segment stack 'stack'
@@ -284,17 +309,7 @@ revisarFilaLeida proc near
 
     ;MOV dl, byte ptr buffer[bx]
     ;int 21h
-    CMP byte ptr buffer[bx], 'K'
-    JE encontreAKirstein2
-    CMP byte ptr buffer[bx], 'k'
-    JE encontreAKirstein2
-    JMP noEncontreAKirstein
-    encontreAKirstein2:
-    MOV al, indiceExterno
-    MOV byte ptr kirstein[0], al ;fila
-    MOV byte ptr kirstein[1], bl ;columna
-    INC byte ptr kirstein[1] ;al inicio esta el tamaño
-    noEncontreAKirstein:
+    
     CMP byte ptr buffer[bx], 13; revisar si leyo mas de una fila
     JE leyoMasDeUnaFila
     INC bx
@@ -396,24 +411,24 @@ printMatrix endp
 axezador proc near
     ; supone los indices en cl y ch (fil y col)
     ; retorna en el ax el contenido
-    ; supone en [si] un ptr a la matriz.
-    ; supone los tamaños en dh y dl
-    MOV dh, N
-    MOV dl, M
-    lea si, matrizSokoban
+    ; no supone en [si] un ptr a la matriz.
+    ; no supone los tamaños en dh y dl
+    
     push bx
     push cx
     push dx
     push si
 
-    mov al, cl
-    mul dh
-    mov bl, ch
-    xor bh, bh
-    add ax, bx
-    shl ax, 1
-    add si, ax
-    mov ax, word ptr [si]    
+
+    lea si, matrizSokoban
+    MOV al, ch
+    MOV bl, M ; tamaño de columnas
+    MUL bl
+    XOR ch, ch
+    ADD ax, cx 
+    ADD si, ax; sumar el numero de fila correspondiente
+    ;shl ax, 1
+    mov al, byte ptr[si]    
 
     pop SI
     pop DX
@@ -646,6 +661,23 @@ imprimirMatrizVideo proc near
   ret
 imprimirMatrizVideo endp
 
+retardadorPantalla proc near
+     
+  PUSH cx
+  MOV cx, 32288
+  retardadorPantallaCiclo:
+      PUSH cx
+      MOV cx, 3
+      retardadorPantallaCiclo2:
+
+      loop retardadorPantallaCiclo2
+      POP CX
+  loop retardadorPantallaCiclo
+  POP CX
+
+  ret
+retardadorPantalla endp
+
 limpiarPantalla proc near
   PUSH ax
   PUSH bx
@@ -681,15 +713,17 @@ buscarAKirstein proc near
   pushRegisters
   XOR cx, cx
   cicloBuscarKirstein:
-
-    MOV al, cl
+    MOV ax, cx
+    ;CALL printAX
+    ;printSpace
     CALL buscarAKirsteinFila
-    JC finalBuscarAKirstein
+    JC finalBuscarAKirstein    
+    
   INC cl
   CMP cl, numFilasCargadas
-  JB cicloBuscarKirstein
+  JNG cicloBuscarKirstein
   finalBuscarAKirstein:
-
+  printENTER
   popRegisters
   ret
 buscarAKirstein endp
@@ -698,7 +732,7 @@ buscarAKirsteinFila proc near
   ; busca a kirstein en las filas
   ; si lo encuentra se activa el carry
   pushRegisters
-
+  MOV dl, al
   lea di, matrizSokoban
   ;calcular el numero de fila
   ;viene dado en el al
@@ -706,6 +740,7 @@ buscarAKirsteinFila proc near
   MUL bl
   ADD di, ax; sumar el numero de fila correspondiente
   MOV cl, [di] ;como es like pascal el tamaño viene al frente
+  MOV dh, cl
   inc di
   cicloBuscarKirsteinFila:
     CMP byte ptr[di], 'K'
@@ -714,16 +749,189 @@ buscarAKirsteinFila proc near
     JE encontreAKirstein
     inc di
   LOOP cicloBuscarKirsteinFila
+  clc
   JMP finalBuscarAKirsteinFila
   encontreAKirstein:
-    MOV byte ptr kirstein[0], al ;fila
-    MOV byte ptr kirstein[1], cl ;columna
+    MOV byte ptr kirstein[0], dl ;fila
+    SUB dh, cl 
+    MOV byte ptr kirstein[1], dh ;columna
     INC byte ptr kirstein[1] ;al inicio esta el tamaño
     STC
   finalBuscarAKirsteinFila:
   popRegisters
   ret
 buscarAKirsteinFila endp
+
+getKeyPress proc near
+  ;revisa si se ha presionado una tecla, la cual se retorna en el al
+  MOV AH,01H
+  INT 16H
+  JZ noHayTecla
+  XOR AH,AH
+  INT 16H
+  stc
+  JMP finalGetKeyPress
+  noHayTecla:
+  XOR ax, ax
+  clc
+  finalGetKeyPress:
+  ret
+getKeyPress endp
+
+movimientoSokoban proc near
+  ;este procedimiento se encarga del movimiento del matrizSokoban
+  ;se espera del teclado que se presione 
+  pushRegisters
+
+  cicloMovimientoSokoban:
+  CALL retardadorPantalla
+  CALL getKeyPress
+  JNC noPresionoTecla
+  ;ah ->
+  ;arriba  = 72
+  ;derecha = 77
+  ;abajo = 80
+  ;izquierda = 75
+    CMP ah, 72
+    JNE noPresionoArriba
+    JMP presionoArriba
+    noPresionoArriba:
+      CMP ah, 75
+      JNE noPresionoIzquierda
+      JMP presionoIzquierda
+      noPresionoIzquierda:
+        CMP ah, 77
+        JNE noPresionoDerecha
+        JMP presionoDerecha
+        noPresionoDerecha:    
+          CMP ah, 80
+          JNE noPresionoAbajo
+          JMP presionoAbajo
+          noPresionoAbajo:
+    
+    ;dependiendo de la tecla la direccion cambia
+    ;Arriba es    x:-1, y: 0
+    ;Izquierda es x: 0, y:-1
+    ;Derecha es   x: 0, y:+1
+    ;Abajo es     x:+1, y: 0
+    ;De esta forma puedo hacer un procedimiento que busque colisiones
+    ;pero sumando siempre.
+    presionoArriba:
+      MOV x, -1
+      MOV y, 0
+    presionoIzquierda:
+      MOV x, 0
+      MOV y, -1
+    presionoDerecha:
+      MOV x, 0
+      MOV y, 1
+    presionoAbajo:
+      MOV x, 1
+      MOV y, 0
+  noPresionoTecla:
+  CMP al, 27
+  JE salirJuego
+  JMP finalMovimientoSokoban
+  salirJuego:
+    MOV ax, 0
+    MOV salir, ax
+
+  finalMovimientoSokoban:
+
+
+  popRegisters
+  ret
+movimientoSokoban endp
+
+verificarColisiones proc near
+  ;este metodo busca colisiones segun la direccion en la que 
+  ;que quiere mover el usuario al sokoban
+  pushRegisters
+    ;posicion del sokoban en kirstein
+    MOV ch, kirstein[0]
+    MOV cl, kirstein[1]
+    CALL axezador
+    MOV kirstein[2], al
+
+    ADD ch, x
+    ADD cl, y
+    CALL axezador
+    CMP al, muro
+    JNE noEsMuro
+    JMP esMuro
+    noEsMuro:
+      CMP al, espacio
+      JNE noEsEspacio
+      JMP esEspacio
+      noEsEspacio:
+        CMP al, zonaEntrega
+        JNE noEsZonaEntrega
+        JMP esZonaEntrega
+        noEsZonaEntrega:
+          CMP al, caja
+          JNE noEsCaja
+          JMP quiereEmpujarCaja
+          noEsCaja:
+            JMP esMuro
+    
+    esMuro:    
+    esZonaEntrega:
+    esEspacio:
+    quiereEmpujarCaja:
+      ADD ch, x
+      ADD cl, y
+      CALL axezador
+      CMP al, espacio
+      JE sePuedeMoverCaja
+      CMP al, zonaEntrega
+      JE sePuedeMoverCaja
+      JMP noSePuedeMovercaja
+      sePuedeMoverCaja:
+
+      noSePuedeMovercaja:
+
+  popRegisters
+  ret
+verificarColisiones endp
+
+hacerMatrizSinObjetosMoviles proc near
+  ;este procedimiento hace una copia de la matriz
+  ;del nivel pero elimina los objetos moviles 
+  ;dejando solo los muros, zonas de entrega y espacios
+
+  PUSH ax
+  PUSH di
+  PUSH es
+  PUSH si
+
+  PUSH ds
+  POP es
+  lea si, matrizSokoban
+  lea di, matrizSoloNivel
+  cld
+  XOR cx, cx
+  MOV al, N
+  MUL M
+  MOV cx, ax
+  ciclo_HacerMatriz:
+    LODSB
+    CMP al, caja
+    JE cambiarElementoMovilPorEspacio
+    CMP al, kirstein[2]
+    JE cambiarElementoMovilPorEspacio
+    JMP condicionCiclo_HacerMatriz
+    cambiarElementoMovilPorEspacio:
+      MOV al, espacio
+    condicionCiclo_HacerMatriz:
+      STOSB
+    LOOP ciclo_HacerMatriz
+  POP si
+  POP es
+  POP di
+  POP ax
+
+  ret
+hacerMatrizSinObjetosMoviles endp
 
 	inicio: 
 	  
@@ -736,19 +944,12 @@ buscarAKirsteinFila endp
 	CALL pressEnterContinueEco
 
 	CALL cargaDeNiveles
-  
-  CALL printMatrix
+
+  ;CALL printMatrix
   ;CALL pressEnterContinueEco
   ;CALL imprimirMatrizVideo
-	;CALL buscarAKirstein
-  XOR ah, ah
-  MOV al, kirstein[0]
-  CALL printAX
-  printENTER
-  XOR ah, ah
-  MOV al, kirstein[1]
-  CALL printAX
-  printENTER
+	CALL buscarAKirstein
+
 	mov  ax,4C00h
 	int  21h
 
