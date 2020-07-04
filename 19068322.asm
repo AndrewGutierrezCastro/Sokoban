@@ -70,7 +70,7 @@ datos segment
     msgTeclaPresionada db "Se presiono la tecla",10,13,7,'$'
     errorLect db 0 ; 1 error lectura Nivel, 0 sin errores
     
-    numNivelRaw db 000
+    numNivelRaw db 139
     numNivelStr db "0000", '$'
 
     indiceExterno db 20
@@ -96,7 +96,7 @@ datos segment
     espacio db '.'
     caja db 'X'
     zonaEntrega db 'O'
-
+    cajasEntregadas db 0
     ;movimientoSokoban
     x db 0 
     y db 0
@@ -411,7 +411,7 @@ printMatrix endp
 axezador proc near
     ; supone los indices en cl y ch (fil y col)
     ; retorna en el ax el contenido
-    ; no supone en [si] un ptr a la matriz.
+    ; supone en [si] un ptr a la matriz.
     ; no supone los tamaños en dh y dl
     
     push bx
@@ -419,8 +419,6 @@ axezador proc near
     push dx
     push si
 
-
-    lea si, matrizSokoban
     MOV al, ch
     MOV bl, M ; tamaño de columnas
     MUL bl
@@ -436,6 +434,35 @@ axezador proc near
     pop BX
     ret
 axezador endp
+
+almacenador proc near
+  ; supone los indices en cl y ch (fil y col)
+  ; retorna en el ax el contenido
+  ; supone en [si] un ptr a la matriz.
+  ; se supone en el al el dato a guardar
+  
+  push bx
+  push cx
+  push dx
+  push si
+  MOV dl, al
+  MOV al, ch
+  MOV bl, M ; tamaño de columnas
+  MUL bl
+  XOR ch, ch
+  ADD ax, cx 
+  ADD si, ax; sumar el numero de fila correspondiente
+  ;shl ax, 1
+  mov byte ptr[si], dl    
+
+  pop SI
+  pop DX
+  pop CX
+  pop BX
+  ret
+
+  ret
+almacenador endp
 
 copyRowToMatrix proc near
   
@@ -516,7 +543,7 @@ printRowMatrix proc near
   ;este procedimiento imprime una fila de la matriz 
   ;el indice externo se da en el al
   pushRegisters
-  lea di, matrizSokoban
+  ;lea di, matrizSokoban
   ;calcular el numero de fila
   ;viene dado en el al
   MOV bl, M ; tamaño de columnas
@@ -667,7 +694,7 @@ retardadorPantalla proc near
   MOV cx, 32288
   retardadorPantallaCiclo:
       PUSH cx
-      MOV cx, 3
+      MOV cx, 2
       retardadorPantallaCiclo2:
 
       loop retardadorPantallaCiclo2
@@ -808,7 +835,7 @@ movimientoSokoban proc near
           JNE noPresionoAbajo
           JMP presionoAbajo
           noPresionoAbajo:
-    
+            JMP noPresionoTecla
     ;dependiendo de la tecla la direccion cambia
     ;Arriba es    x:-1, y: 0
     ;Izquierda es x: 0, y:-1
@@ -819,21 +846,25 @@ movimientoSokoban proc near
     presionoArriba:
       MOV x, -1
       MOV y, 0
+      JMP finalMovimientoSokoban
     presionoIzquierda:
       MOV x, 0
       MOV y, -1
+      JMP finalMovimientoSokoban
     presionoDerecha:
       MOV x, 0
       MOV y, 1
+      JMP finalMovimientoSokoban
     presionoAbajo:
       MOV x, 1
       MOV y, 0
+      JMP finalMovimientoSokoban
   noPresionoTecla:
   CMP al, 27
   JE salirJuego
   JMP finalMovimientoSokoban
   salirJuego:
-    MOV ax, 0
+    MOV ax, 1
     MOV salir, ax
 
   finalMovimientoSokoban:
@@ -850,11 +881,13 @@ verificarColisiones proc near
     ;posicion del sokoban en kirstein
     MOV ch, kirstein[0]
     MOV cl, kirstein[1]
+    lea si, matrizSokoban
     CALL axezador
     MOV kirstein[2], al
 
     ADD ch, x
     ADD cl, y
+    lea si, matrizSokoban
     CALL axezador
     CMP al, muro
     JNE noEsMuro
@@ -874,12 +907,31 @@ verificarColisiones proc near
           noEsCaja:
             JMP esMuro
     
-    esMuro:    
+    esMuro: 
+      JMP finalVerificarColisiones   
     esZonaEntrega:
     esEspacio:
+      ; el ch y cl estan apuntando a donde quiero ir
+      MOV kirstein[0], ch
+      MOV kirstein[1], cl
+      MOV al, kirstein[2]
+      lea si, matrizSokoban
+      CALL almacenador
+
+      SUB ch, x; ir a la posicion anterior
+      SUB cl, y;traer el valor de la matriz Solo nivel
+      lea si, matrizSoloNivel
+      CALL axezador
+      lea si, matrizSokoban
+      CALL almacenador
+      XOR ax, ax 
+      MOV x, ah
+      MOV y, al
+      JMP finalVerificarColisiones
     quiereEmpujarCaja:
       ADD ch, x
       ADD cl, y
+      lea si, matrizSokoban
       CALL axezador
       CMP al, espacio
       JE sePuedeMoverCaja
@@ -887,8 +939,33 @@ verificarColisiones proc near
       JE sePuedeMoverCaja
       JMP noSePuedeMovercaja
       sePuedeMoverCaja:
-
+        lea si, matrizSokoban
+        MOV al, caja
+        ;en el ch y cl ya estan los indices
+        CALL almacenador
+        ;ya movi la caja, ahora voy a mover a kirstein
+        SUB ch, x
+        SUB cl, y
+        MOV kirstein[0], ch
+        MOV kirstein[1], cl 
+        lea si, matrizSokoban
+        MOV al, kirstein[2]
+        CALL almacenador
+        ;ahora voy a poner un espacio en blanco donde estaba
+        ;kirstein
+        SUB ch, x
+        SUB cl, y
+        lea si, matrizSoloNivel
+        CALL axezador
+        lea si, matrizSokoban
+        CALL almacenador
+        XOR ax, ax 
+        MOV x, ah
+        MOV y, al
+        JMP finalVerificarColisiones
       noSePuedeMovercaja:
+        JMP finalVerificarColisiones
+  finalVerificarColisiones:
 
   popRegisters
   ret
@@ -933,6 +1010,20 @@ hacerMatrizSinObjetosMoviles proc near
   ret
 hacerMatrizSinObjetosMoviles endp
 
+cicloGeneral proc near
+  pushRegisters
+    ciclo_CicloGeneral:
+      CALL movimientoSokoban
+      CMP salir, 1
+      JE finalCicloGeneral
+      CALL verificarColisiones
+      CALL imprimirMatrizVideo
+      JMP ciclo_CicloGeneral
+  finalCicloGeneral:
+  popRegisters
+  ret
+cicloGeneral endp
+
 	inicio: 
 	  
 	mov ax, datos
@@ -945,10 +1036,17 @@ hacerMatrizSinObjetosMoviles endp
 
 	CALL cargaDeNiveles
 
-  ;CALL printMatrix
+  ; lea di, matrizSokoban
+  ; CALL printMatrix
   ;CALL pressEnterContinueEco
   ;CALL imprimirMatrizVideo
 	CALL buscarAKirstein
+
+  CALL hacerMatrizSinObjetosMoviles
+  ; lea di, matrizSoloNivel
+  ; CALL printMatrix
+  ; CALL pressEnterContinueEco
+  CALL cicloGeneral
 
 	mov  ax,4C00h
 	int  21h
