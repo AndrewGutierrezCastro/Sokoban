@@ -51,17 +51,18 @@ datos segment
     AcerdaDe db "Solo debe ejecutar el programa y jugar.",10,13,7,"Para moverse presione las flechas y para salir ESC",10,13,7,'$'
     var dw ?
     msgErrorLectura db "Error en la lectura del archivo de origen$"
-    errorLect db 0 ; 1 error lectura Nivel
+    msgLimiteNiveles db "Se buscaron mas niveles y no se pudo cargar ninguno, desea salir?",10,13,7,"Presione ESC",10,13,7,"Si quiere volver a empezar desde 0 presione cualquier otra tecla",10,13,7,'$'
+    errorLect db 0 ; 1 error lectura Nivel, 0 sin errores
     
     numNivelRaw db 000
     numNivelStr db "0000", '$'
 
     indiceExterno db 20
-    buffer db 1000 dup('.');para leer un nivel de 20 fila y 50 columnas
+    buffer db 50 dup('.');para leer un nivel de 20 fila y 50 columnas
     handleLectura dw ? ;uso un buffer de 50 bytes, 20 veces
     bytesBufferLeidos dw 0
     termineDeLeer db 0
-
+    punteroLectura dw 0
 
     pathEstandar db "\NIVELES\SOKO000.txt", '$' 
     pathLectura db 73 DUP(0), '$'
@@ -69,9 +70,9 @@ datos segment
     nombreDrive db "A"
 
     ;matriz de juego
-    matrizSokoban db 1000 dup('*')
+    matrizSokoban db 1020 dup('!')
     N db 20
-    M db 50
+    M db 51
 
 datos ends
 
@@ -189,7 +190,7 @@ lecturaNiveles proc near
   PUSH bx
   PUSH cx
   PUSH dx
-
+  MOV errorLect, 0
   lea dx, pathLectura
   MOV ax, 3D00h
   int 21h    
@@ -198,24 +199,38 @@ lecturaNiveles proc near
   JMP errorLectura
   sinErrorAbrirFichero:
   MOV handleLectura, ax
-
-  MOV indiceExterno, 20 ;20 * 50 = 10000
+  MOV punteroLectura, 0
+  MOV indiceExterno, 0 ;20 * 50 = 10000
   
     cicloLectura:
-      
+      mov ax, 4200h ; mover el filepointer
+      mov bx, handleLectura; desde el inico del arhcivo
+      mov dx, punteroLectura
+      xor cx,cx
+      int 21h
+
       MOV ax, 3F00h
       MOV bx, handleLectura
-      MOV cx, 1000 ; leer todo el buffer
+      MOV cx, 50 ; leer 50 bytes en el buffer
       lea dx, buffer
       int 21h
+      
+       
       JNC bufferLeyoBien
       MOV errorLect, 1; =1 error de lectura
       JMP errorLectura
       bufferLeyoBien:
 
-      MOV bytesBufferLeidos, ax ; mover la cantidad de bytes que leyo        
-      MOV var, ax
-      CALL copyBufferToMatrix
+        CMP ax, 0
+        JNE leiAlgo
+        JMP cerrarLecturaArhivo
+      leiAlgo:
+        MOV bytesBufferLeidos, ax ; mover la cantidad de bytes que leyo  
+        CALL revisarFilaLeida  
+        MOV ax, bytesBufferLeidos
+        CALL copyRowToMatrix
+        ;MOV al, indiceExterno
+        ;CALL printRowMatrix
 
     condicionCicloLectura:
       INC byte ptr[indiceExterno]
@@ -254,11 +269,41 @@ lecturaNiveles proc near
   ret
 lecturaNiveles endp
 
-copyBufferToMatrix proc near
+revisarFilaLeida proc near
+  ;este procedimiento revisa si el buffer leyo mas de una fila
+  ;y ajusta el contador de bytesBufferLeidos para copiar Solo
+  ;los caracteres correspondientes a esa fila.
+  pushRegisters
+  XOR bx, bx
+  MOV cx, bytesBufferLeidos
+  ;MOV ah, 02h
+  cicloRevisarFilaLeida:
+
+    ;MOV dl, byte ptr buffer[bx]
+    ;int 21h
+    CMP byte ptr buffer[bx], 13; revisar si leyo mas de una fila
+    JE leyoMasDeUnaFila
+    INC bx
+    LOOP cicloRevisarFilaLeida
+    JMP finalRevisarFilaLeida
   
+  leyoMasDeUnaFila:
+  MOV bytesBufferLeidos, bx ; mover la cantidad de bytes hasta el cambio 
+  ;de linea 
+  finalRevisarFilaLeida:
+  MOV bx, bytesBufferLeidos
+  INC bx
+  ADD punteroLectura, bx; sumarle al filepointer la cantidad
+  ;de bytes leidos, para que la proxima fila empiece a leer
+  ;desde el lugar correcto
+  popRegisters
+  ret
+revisarFilaLeida endp
+
+copyBufferToMatrix proc near
   pushRegisters 
-  ;este metodo recibe el numero de fila en indiceExterno
-  ;en el buffer el array a copiar
+  ;este metodo copia el buffer a la matriz
+  ;antiguo. No se recomienda usar
   
   push ds
   pop es
@@ -322,24 +367,12 @@ printMatrix proc near
   pushRegisters
   XOR bx, bx
   cicloPrintMatrix:
-  PUSH bx
-    
-    MOV cx, 50
-    cicloPrintMatrixInterno:
-      PUSH cx
-      MOV ch, bl
-      ;En el cl esta el index interno
-      CALL axezador
-      MOV dl, al
-      MOV ah, 02h
-      int 21h
-
-      POP cx 
-    LOOP cicloPrintMatrixInterno
-    printENTER
-  POP bx
-  INC bx
-  CMP bx, 20
+  
+    MOV al, bl
+    CALL printRowMatrix
+  
+  INC bl
+  CMP bl, N
   JB cicloPrintMatrix
   popRegisters
   ret
@@ -375,20 +408,24 @@ axezador proc near
 axezador endp
 
 copyRowToMatrix proc near
+  
+  ;CALL printBuffer
+
   pushRegisters 
   ;este metodo recibe el numero de fila en indiceExterno
   ;en el buffer el array a copiar
   
-  push ds
-  pop es
-  cld
   lea si, buffer
   lea di, matrizSokoban
   ;calcular el numero de fila
+  XOR ah, ah
   MOV al, indiceExterno
-  MOV bl, 50
+  MOV bl, M; cantidad de columnas
   MUL bl
   ADD di, ax; sumar el numero de fila correspondiente
+  push ds
+  pop es
+  cld
   MOV cx, bytesBufferLeidos
   REP MOVSB
 
@@ -427,6 +464,89 @@ printAX proc
     ret
 printAX endP
 
+printBuffer proc near
+  pushRegisters
+  MOV cx, bytesBufferLeidos
+  MOV ah, 02h
+  XOR bx, bx
+  cicloPrintBuffer:
+    MOV dl, byte ptr buffer[bx]
+    INC bx
+    int 21h
+  LOOP cicloPrintBuffer
+
+  popRegisters
+  ret
+printBuffer endp
+
+printRowMatrix proc near
+  ;este procedimiento imprime una fila de la matriz 
+  ;el indice externo se da en el al
+  pushRegisters
+  lea di, matrizSokoban
+  ;calcular el numero de fila
+  ;viene dado en el al
+  MOV bl, M ; tamaño de columnas
+  MUL bl
+  ADD di, ax; sumar el numero de fila correspondiente
+  ;en el di tengo el puntero la fila correcta
+
+  MOV cx, 51 ; imprime toda la fila o cuando llegue a un salto
+  ; de linea, lo que suceda primero
+  MOV ah, 02h
+  cicloPrintRowMatrix:
+    MOV dl, [di]
+    int 21h
+    inc di
+    CMP byte ptr [di], '!'; revisar si leyo mas de una fila
+    JE printRowFinal
+    LOOP cicloPrintRowMatrix
+    JMP finalRevisarFilaLeida
+  printRowFinal:
+
+  popRegisters
+  ret
+printRowMatrix endp
+
+cargaDeNiveles proc near
+  ;este procedimiento carga niveles hasta 100, sino encuentra pregunta si desea salir
+  ;sino vuelve al 0
+  pushRegisters
+  cicloCargaNiveles:
+    CALL getPathNivel
+    MOV ah, 09h
+    lea dx, pathLectura
+    int 21h
+    CALL pressEnterContinueEco
+    CALL lecturaNiveles
+
+    CMP errorLect, 0
+    JNE noSeCargoNivel
+    JMP finalCargaNiveles
+
+    noSeCargoNivel:
+      INC numNivelRaw
+      JMP condicionCicloCargaNiveles
+
+    condicionCicloCargaNiveles:
+      CMP numNivelRaw, 100
+      JA limiteNiveles
+  JMP cicloCargaNiveles
+
+  limiteNiveles:
+    MOV ah, 09h
+    lea dx, msgLimiteNiveles
+    int 21h
+    MOV ah, 01h
+    int 21h
+    CMP al, 27 ; si dio escape
+    JE finalCargaNiveles
+    MOV numNivelRaw, 0
+    JMP cicloCargaNiveles
+  finalCargaNiveles:
+  popRegisters
+  ret
+cargaDeNiveles endp
 
 	inicio: 
 	  
@@ -435,19 +555,12 @@ printAX endP
 	mov ax, pila
 	mov ss, ax
 	
-
 	printAcercaDe
 	CALL pressEnterContinueEco
 
-	CALL getPathNivel
-
-	CALL lecturaNiveles
-
+	CALL cargaDeNiveles
+  
   CALL printMatrix
-
-  printENTER
-  MOV ax, var
-  CALL printAX
 	
 	mov  ax,4C00h
 	int  21h
