@@ -72,6 +72,7 @@ datos segment
     ;matriz de juego
     matrizSokoban db 1040 dup('!')
     numFilasCargadas db 0
+    kirstein db 0,0
     N db 20
     M db 52
 
@@ -283,6 +284,17 @@ revisarFilaLeida proc near
 
     ;MOV dl, byte ptr buffer[bx]
     ;int 21h
+    CMP byte ptr buffer[bx], 'K'
+    JE encontreAKirstein2
+    CMP byte ptr buffer[bx], 'k'
+    JE encontreAKirstein2
+    JMP noEncontreAKirstein
+    encontreAKirstein2:
+    MOV al, indiceExterno
+    MOV byte ptr kirstein[0], al ;fila
+    MOV byte ptr kirstein[1], bl ;columna
+    INC byte ptr kirstein[1] ;al inicio esta el tamaño
+    noEncontreAKirstein:
     CMP byte ptr buffer[bx], 13; revisar si leyo mas de una fila
     JE leyoMasDeUnaFila
     INC bx
@@ -664,6 +676,55 @@ limpiarPantalla proc near
   ret
 limpiarPantalla endp
 
+buscarAKirstein proc near
+  ;este procedimiento busca al crack de kirstein en la matriz
+  pushRegisters
+  XOR cx, cx
+  cicloBuscarKirstein:
+
+    MOV al, cl
+    CALL buscarAKirsteinFila
+    JC finalBuscarAKirstein
+  INC cl
+  CMP cl, numFilasCargadas
+  JB cicloBuscarKirstein
+  finalBuscarAKirstein:
+
+  popRegisters
+  ret
+buscarAKirstein endp
+
+buscarAKirsteinFila proc near
+  ; busca a kirstein en las filas
+  ; si lo encuentra se activa el carry
+  pushRegisters
+
+  lea di, matrizSokoban
+  ;calcular el numero de fila
+  ;viene dado en el al
+  MOV bl, M ; tamaño de columnas
+  MUL bl
+  ADD di, ax; sumar el numero de fila correspondiente
+  MOV cl, [di] ;como es like pascal el tamaño viene al frente
+  inc di
+  cicloBuscarKirsteinFila:
+    CMP byte ptr[di], 'K'
+    JE encontreAKirstein
+    CMP byte ptr[di], 'k'
+    JE encontreAKirstein
+    inc di
+  LOOP cicloBuscarKirsteinFila
+  JMP finalBuscarAKirsteinFila
+  encontreAKirstein:
+    MOV byte ptr kirstein[0], al ;fila
+    MOV byte ptr kirstein[1], cl ;columna
+    INC byte ptr kirstein[1] ;al inicio esta el tamaño
+    STC
+  finalBuscarAKirsteinFila:
+  popRegisters
+  ret
+buscarAKirsteinFila endp
+
 	inicio: 
 	  
 	mov ax, datos
@@ -676,10 +737,18 @@ limpiarPantalla endp
 
 	CALL cargaDeNiveles
   
-  ;CALL printMatrix
+  CALL printMatrix
   ;CALL pressEnterContinueEco
-  CALL imprimirMatrizVideo
-	
+  ;CALL imprimirMatrizVideo
+	;CALL buscarAKirstein
+  XOR ah, ah
+  MOV al, kirstein[0]
+  CALL printAX
+  printENTER
+  XOR ah, ah
+  MOV al, kirstein[1]
+  CALL printAX
+  printENTER
 	mov  ax,4C00h
 	int  21h
 
