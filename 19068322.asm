@@ -68,10 +68,18 @@ datos segment
     msgLimiteNiveles db "Se buscaron mas niveles y no se pudo cargar ninguno, desea salir?",10,13,7
                     db "Presione ESC",10,13,7,"Si quiere volver a empezar desde 0 presione cualquier otra tecla",10,13,7,'$'
     msgTeclaPresionada db "Se presiono la tecla",10,13,7,'$'
+    msgNivel db 7,"Nivel: "
+    msgPasos db 7,"Pasos: "
+    msgPush db 9,"Empujes: "
+    msgNivelesResueltos db 19,"Niveles Resueltos: "
+    contadores dw 0,0,0
+    estadisticas db 80 DUP('')
+    ;pasos, push, nivelesConcluidos
     errorLect db 0 ; 1 error lectura Nivel, 0 sin errores
     
-    numNivelRaw db 139
+    numNivelRaw dw 139
     numNivelStr db "0000", '$'
+    numMaxNivel dw 999
 
     indiceExterno db 20
     buffer db 50 dup('.');para leer un nivel de 20 fila y 50 columnas
@@ -155,8 +163,7 @@ getPathNivel proc near
     ;mover el numero
 	;primero obtener el numero del nivel en forma de string
 	lea si, numNivelStr;en el si un vector de 4 bytes
-	MOV al, numNivelRaw;numero a convertir en el ax
-	XOR ah, ah
+	MOV ax, numNivelRaw;numero a convertir en el ax
 	MOV bx, 10; la base en el bx
 	CALL convertirnumBaseN
     ; de esta manera obtengo 15 en '0015'
@@ -615,7 +622,8 @@ cargaDeNiveles proc near
       JMP condicionCicloCargaNiveles
 
     condicionCicloCargaNiveles:
-      CMP numNivelRaw, 100
+      MOV ax, numNivelRaw
+      CMP ax, numMaxNivel
       JA limiteNiveles
   JMP cicloCargaNiveles
 
@@ -927,6 +935,8 @@ verificarColisiones proc near
       XOR ax, ax 
       MOV x, ah
       MOV y, al
+      INC word ptr contadores[0]
+      ;pasos, push, nivelesConcluidos
       JMP finalVerificarColisiones
     quiereEmpujarCaja:
       ADD ch, x
@@ -962,6 +972,9 @@ verificarColisiones proc near
         XOR ax, ax 
         MOV x, ah
         MOV y, al
+        INC word ptr contadores[0]
+        INC word ptr contadores[1]
+        ;pasos, push, nivelesConcluidos
         JMP finalVerificarColisiones
       noSePuedeMovercaja:
         JMP finalVerificarColisiones
@@ -1013,16 +1026,50 @@ hacerMatrizSinObjetosMoviles endp
 cicloGeneral proc near
   pushRegisters
     ciclo_CicloGeneral:
-      CALL movimientoSokoban
-      CMP salir, 1
-      JE finalCicloGeneral
-      CALL verificarColisiones
-      CALL imprimirMatrizVideo
-      JMP ciclo_CicloGeneral
+    	MOV dh, 22
+    	MOV dl, 10
+    	CALL set_cursor
+		CALL movimientoSokoban
+		CMP salir, 1
+		JE finalCicloGeneral
+		CALL verificarColisiones
+		CALL imprimirMatrizVideo
+		JMP ciclo_CicloGeneral
   finalCicloGeneral:
   popRegisters
   ret
 cicloGeneral endp
+
+printEstadisticas proc near
+	pushRegisters
+	;pasos, push, nivelesConcluidos
+	XOR ax, ax
+	lea si, msgPasos
+	lea di, estadisticas
+	MOV al, byte ptr [si]	
+	inc si
+
+	push ds
+    pop es
+    cld
+    MOV cx, ax
+    REP MOVSB
+    ;MOVER LA CANIDAD DE PASOS
+    lea si, msgPush
+	ADD al, byte ptr [si]	
+
+	push ds
+    pop es
+    cld
+    XOR ch, ch
+    MOV cl, byte ptr [si]	
+    REP MOVSB
+
+    
+	popRegisters
+	ret
+printEstadisticas endp
+
 
 	inicio: 
 	  
