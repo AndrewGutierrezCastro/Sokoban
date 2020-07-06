@@ -68,18 +68,26 @@ datos segment
     msgLimiteNiveles db "Se buscaron mas niveles y no se pudo cargar ninguno, desea salir?",10,13,7
                     db "Presione ESC",10,13,7,"Si quiere volver a empezar desde 0 presione cualquier otra tecla",10,13,7,'$'
     msgTeclaPresionada db "Se presiono la tecla",10,13,7,'$'
-    msgNivel db 7,"Nivel: "
-    msgPasos db 7,"Pasos: "
-    msgPush db 9,"Empujes: "
-    msgNivelesResueltos db 19,"Niveles Resueltos: "
-    contadores dw 0,0,0
-    estadisticas db 80 DUP('')
+    msgNivel db 11,"Nivel: ","    ",'$'
+    msgPasos db 11,"Pasos: ","    ",'$'
+    msgPush db 13,"Empujes: ","    ",'$'
+    msgNivelesResueltos db 23,"Niveles Resueltos: ","    ",'$'
+    contadores dw 0,0,0;pasos, push, niveles      
+    ;Mensajes de teclado
+    msgTecladoAyuda db 8,"Ayuda: H"
+    msgTecladoReset db 8,"Reset: R"
+    msgTecladoSigNivel db 18,"Siguiente Nivel: S"
+    msgTecladoAntNivel db 17,"Anterior Nivel: A"
+    msgTecladoHighScore db 13,"HighScores: N"
+    msgTecladoSalir db 10,"Salir: ESC"
+
     ;pasos, push, nivelesConcluidos
     errorLect db 0 ; 1 error lectura Nivel, 0 sin errores
-    
+
     numNivelRaw dw 139
     numNivelStr db "0000", '$'
     numMaxNivel dw 999
+
 
     indiceExterno db 20
     buffer db 50 dup('.');para leer un nivel de 20 fila y 50 columnas
@@ -88,9 +96,12 @@ datos segment
     termineDeLeer db 0
     punteroLectura dw 0
 
+
     pathEstandar db "\NIVELES\SOKO000.txt", '$' 
+    ;pathLectura db "A:\ENSAMB~1\VIDEOS~1\SOKOBAN\NIVELES\soko139.txt" , '$'
     pathLectura db 73 DUP(0), '$'
-    directory db 50 dup('$')
+    
+    directory db 64 dup('0'), '$'
     nombreDrive db "A"
 
     ;matriz de juego
@@ -249,7 +260,6 @@ lecturaNiveles proc near
       lea dx, buffer
       int 21h
       
-       
       JNC bufferLeyoBien
       MOV errorLect, 1; =1 error de lectura
       JMP errorLectura
@@ -285,7 +295,8 @@ lecturaNiveles proc near
       JMP finalLecturaArchivo
 
     errorLectura:
-      
+      CALL printAX
+      printSpace
       CMP errorLect, 1
       JE errorLecturaMsgPrint
       JMP finalLecturaArchivo
@@ -531,6 +542,37 @@ printAX proc
     ret
 printAX endP
 
+printAxToSi proc near
+  push AX
+  push BX
+  push CX
+  push DX
+  push SI
+
+    xor cx, cx
+    mov bx, 10
+  ciclo1PAXtSI: xor dx, dx
+      div bx
+      push dx
+      inc cx
+      cmp ax, 0
+      jne ciclo1PAXtSI
+      ;mov ah, 02h
+  ciclo2PAXtSI: pop DX
+      add dl, 30h
+      mov byte ptr[si], dl
+      INC si      
+      loop ciclo2PAXtSI
+
+  pop SI
+  pop DX
+  pop CX
+  pop BX
+  pop AX
+
+  ret
+printAxToSi endp
+
 printBuffer proc near
   pushRegisters
   MOV cx, bytesBufferLeidos
@@ -685,7 +727,7 @@ imprimirMatrizVideo proc near
     MUL bl
     ADD si, ax; sumar el numero de fila correspondiente
     MOV indiceExterno, cl
-    INC indiceExterno
+
     CALL imprimirFilaVideo
   
   INC cl
@@ -699,10 +741,10 @@ imprimirMatrizVideo endp
 retardadorPantalla proc near
      
   PUSH cx
-  MOV cx, 32288
+  MOV cx, 8192
   retardadorPantallaCiclo:
       PUSH cx
-      MOV cx, 2
+      MOV cx, 1
       retardadorPantallaCiclo2:
 
       loop retardadorPantallaCiclo2
@@ -973,7 +1015,7 @@ verificarColisiones proc near
         MOV x, ah
         MOV y, al
         INC word ptr contadores[0]
-        INC word ptr contadores[1]
+        INC word ptr contadores[2]
         ;pasos, push, nivelesConcluidos
         JMP finalVerificarColisiones
       noSePuedeMovercaja:
@@ -1026,12 +1068,11 @@ hacerMatrizSinObjetosMoviles endp
 cicloGeneral proc near
   pushRegisters
     ciclo_CicloGeneral:
-    	MOV dh, 22
-    	MOV dl, 10
-    	CALL set_cursor
 		CALL movimientoSokoban
 		CMP salir, 1
 		JE finalCicloGeneral
+    CALL printEstadisticas
+    CALL retardadorPantallaEstadisticas
 		CALL verificarColisiones
 		CALL imprimirMatrizVideo
 		JMP ciclo_CicloGeneral
@@ -1040,36 +1081,155 @@ cicloGeneral proc near
   ret
 cicloGeneral endp
 
+makeEstadisticas proc near
+  pushRegisters
+    ;[+7],  [+9],   [+19] donde poner los numeros en str
+  ;pasos, push, nivelesConcluidos
+  ;contadores mismo orden
+  XOR ax, ax
+  lea si, msgNivel
+  ADD si, 8
+  MOV ax, numNivelRaw
+  CALL printAxToSi
+
+  XOR ax, ax
+  lea si, msgPasos
+  ADD si, 8
+  MOV ax, word ptr contadores[0]
+  CALL printAxToSi
+
+  XOR ax, ax
+  lea si, msgPush
+  ADD si, 10
+  MOV ax, word ptr contadores[2]
+  CALL printAxToSi
+
+  XOR ax, ax
+  lea si, msgNivelesResueltos
+  ADD si, 20
+  MOV ax, word ptr contadores[4]
+  CALL printAxToSi
+
+  popRegisters
+  ret
+makeEstadisticas endp
+
 printEstadisticas proc near
 	pushRegisters
-	;pasos, push, nivelesConcluidos
-	XOR ax, ax
-	lea si, msgPasos
-	lea di, estadisticas
-	MOV al, byte ptr [si]	
-	inc si
+  CALL makeEstadisticas
+  ;dh, dl fila y columna
+  ;si puntero a la str
+  lea si, msgPasos
+  MOV dh, 1
+  MOV dl, 51
+  CALL imprimirStrVideo
+  
+  lea si, msgPush
+  MOV dh, 2
+  MOV dl, 51
+  CALL imprimirStrVideo
+  
+  lea si, msgNivel
+  MOV dh, 3
+  MOV dl, 51
+  CALL imprimirStrVideo
 
-	push ds
-    pop es
-    cld
-    MOV cx, ax
-    REP MOVSB
-    ;MOVER LA CANIDAD DE PASOS
-    lea si, msgPush
-	ADD al, byte ptr [si]	
+  lea si, msgNivelesResueltos
+  MOV dh, 4
+  MOV dl, 51
+  CALL imprimirStrVideo
 
-	push ds
-    pop es
-    cld
-    XOR ch, ch
-    MOV cl, byte ptr [si]	
-    REP MOVSB
+  lea si, msgTecladoSigNivel
+  MOV dh, 6
+  MOV dl, 51
+  CALL imprimirStrVideo
+  
+  lea si, msgTecladoAntNivel
+  MOV dh, 8
+  MOV dl, 51
+  CALL imprimirStrVideo
 
-    
+  lea si, msgTecladoHighScore
+  MOV dh, 10
+  MOV dl, 51
+  CALL imprimirStrVideo
+
+  lea si, msgTecladoAyuda
+  MOV dh, 21
+  MOV dl, 0
+  CALL imprimirStrVideo
+  
+  lea si, msgTecladoReset
+  MOV dh, 21
+  MOV dl, 15
+  CALL imprimirStrVideo
+
+  lea si, msgTecladoSalir
+  MOV dh, 21
+  MOV dl, 30
+  CALL imprimirStrVideo
+
 	popRegisters
 	ret
 printEstadisticas endp
 
+imprimirStrVideo proc near
+  ;este metodo imprime un string en una parte especifica de
+  ;la pantalla, se recibe la fila y columna en dh, dl
+  ;se recibe en el si el puntero al string like PASCAL
+  pushRegisters
+
+  MOV al, 80
+  MUL dh
+  shl ax, 1
+  XOR dh, dh
+  shl dx, 1
+  ADD ax, dx
+  mov di, ax ;posicion en la pantalla
+
+  mov  ax,0B800h
+  mov  es,ax
+
+  mov  cl, byte ptr[si]
+  xor ch, ch
+  inc si
+
+  cicloImprimirStrVideo:    ;Bucle que se encargara de pintar la string
+      mov  al, [si]        ;caracteres de la pantalla para limpiarla
+      mov  ah, 0          ;Fondo azul, letras blancas
+      OR ah, 07h
+      mov  es:[di], ax
+      inc  si             ;Pasamos a apuntar a la siguiente letra del saludo
+      inc  di
+      inc  di
+
+      LOOP cicloImprimirStrVideo
+  popRegisters
+  ret
+  ret
+imprimirStrVideo endp
+
+retardadorPantallaEstadisticas proc near
+  pushRegisters
+  MOV cx, 16144
+  ciclo_RetardadorPantallaEstadisticas:
+    PUSH cx
+      MOV cx, 6
+      retardadorPantallaEstadisticasCiclo2:
+
+      loop retardadorPantallaEstadisticasCiclo2
+      POP CX
+  LOOP ciclo_RetardadorPantallaEstadisticas
+  popRegisters
+  ret
+retardadorPantallaEstadisticas endp
+
+capturadorOpcionesMenu proc near
+  pushRegisters
+
+  popRegisters
+  ret
+capturadorOpcionesMenu endp
 
 	inicio: 
 	  
@@ -1082,19 +1242,35 @@ printEstadisticas endp
 	CALL pressEnterContinueEco
 
 	CALL cargaDeNiveles
-
+  ;CALL getPathNivel
+  ;CALL lecturaNiveles
+  
   ; lea di, matrizSokoban
   ; CALL printMatrix
-  ;CALL pressEnterContinueEco
+  
   ;CALL imprimirMatrizVideo
-	CALL buscarAKirstein
+	
+  CALL buscarAKirstein
 
   CALL hacerMatrizSinObjetosMoviles
   ; lea di, matrizSoloNivel
   ; CALL printMatrix
+  
+  ; CALL printEstadisticas
+  ; MOV ah, 09h
+  ; lea dx, msgNivel
+  ; int 21h
+  ; MOV ah, 09h
+  ; lea dx, msgPasos
+  ; int 21h
+  ; MOV ah, 09h
+  ; lea dx, msgPush
+  ; int 21h
+  ; MOV ah, 09h
+  ; lea dx, msgNivelesResueltos
+  ; int 21h
   ; CALL pressEnterContinueEco
   CALL cicloGeneral
-
 	mov  ax,4C00h
 	int  21h
 
