@@ -62,7 +62,7 @@ datos segment
 
     AcerdaDe db "Solo debe ejecutar el programa y jugar.",10,13,7
     db "Para moverse presione las flechas y para salir ESC",10,13,7,'$'
-
+    msgDigiteDrive db "Digite la letra del nombre de su drive de DOSBOX: ",10,13,7,'$'
     var dw ?
     msgErrorLectura db "Error en la lectura del archivo de origen$"
     msgLimiteNiveles db "Se buscaron mas niveles y no se pudo cargar ninguno, desea salir?",10,13,7
@@ -71,6 +71,7 @@ datos segment
     msgNivel db 11,"Nivel: ","    ",'$'
     msgPasos db 11,"Pasos: ","    ",'$'
     msgPush db 13,"Empujes: ","    ",'$'
+    msgBlankContadores db "    "
     msgNivelesResueltos db 23,"Niveles Resueltos: ","    ",'$'
     contadores dw 0,0,0;pasos, push, niveles      
     ;Mensajes de teclado
@@ -80,11 +81,51 @@ datos segment
     msgTecladoAntNivel db 17,"Anterior Nivel: A"
     msgTecladoHighScore db 13,"HighScores: N"
     msgTecladoSalir db 10,"Salir: ESC"
+    msgTecladoAcerdaDe db 11,"AcercaDe: M"
 
+
+    msgVideoAcercaDe db 43," ========================================= "
+                     db 43,"| Acerca De:            Sokoban TEC Arqui |"
+                     db 43,"| Intstituto Tecnologico de Costa Rica    |"
+                     db 43,"| Sokoban  :                              |"
+                     db 43,"|    +Juego en Ensamblador con video      |"
+                     db 43,"|    +Desarrollado por Andrew JGC         |"
+                     db 43,"|    +Uso directo del teclado             |"
+                     db 43,"|    +Carga de niveles automatica         |"
+                     db 43,"|    +Carpeta Niveles necesaria con el    |"
+                     db 43,"|     ejecutable                          |"
+                     db 43,"| Semestre I   -*ENTER PARA SEGUIR*- 2020 |"
+                     db 43," ========================================= " 
+
+    msgVideoAyuda    db 43," ========================================= "
+                     db 43,"| Instrucciones:        Sokoban TEC Arqui |"
+                     db 43,"| Intstituto Tecnologico de Costa Rica    |"
+                     db 43,"| Sokoban  :                              |"
+                     db 43,"|    +Para jugar use las flechas del te-  |"
+                     db 43,"|     clado                               |"
+                     db 43,"|    +Para salir presione la tecla ESC    |"
+                     db 43,"|    +Resetear el nivel:R HighScores: H   |"
+                     db 43,"|     Siguiente y anterior nivel: S, A    |"
+                     db 43,"|                                         |"
+                     db 43,"| Semestre I   -*ENTER PARA SEGUIR*- 2020 |"
+                     db 43," ========================================= "
+
+    msgVideoErrNivel db 43," ========================================= "
+                     db 43,"| Error Lectura:        Sokoban TEC Arqui |"
+                     db 43,"| Ocurrio un error con la lectura de un   |"
+                     db 43,"| nivel                                   |"
+                     db 43,"|    +Presione Enter para intentar leer   |"
+                     db 43,"|     el siguiente nivel                  |"
+                     db 43,"|    +Error con el nivel:                 |"
+                     db 43,"|                                         |"
+                     db 43,"|                                         |"
+                     db 43,"|                                         |"
+                     db 43,"| Semestre I   -*ENTER PARA SEGUIR*- 2020 |"
+                     db 43," ========================================= "
     ;pasos, push, nivelesConcluidos
     errorLect db 0 ; 1 error lectura Nivel, 0 sin errores
 
-    numNivelRaw dw 139
+    numNivelRaw dw 067
     numNivelStr db "0000", '$'
     numMaxNivel dw 999
 
@@ -96,14 +137,14 @@ datos segment
     termineDeLeer db 0
     punteroLectura dw 0
 
-
+    punteroPathLectura dw 0
     pathEstandar db "\NIVELES\SOKO000.txt", '$' 
     ;pathLectura db "A:\ENSAMB~1\VIDEOS~1\SOKOBAN\NIVELES\soko139.txt" , '$'
     pathLectura db 73 DUP(0), '$'
     
     directory db 64 dup('0'), '$'
     nombreDrive db "A"
-
+    teclaGuardada db 0
     ;matriz de juego
     matrizSokoban db 1040 dup('!')
     matrizSoloNivel DB 1040 dup('!')
@@ -196,7 +237,7 @@ getPathNivel proc near
 	JMP ciclopathNivel
 	seguirCicloPathNivel:
 	ADD bx, 3
-
+  MOV punteroPathLectura, bx
     push ds
     pop es
     cld
@@ -295,16 +336,16 @@ lecturaNiveles proc near
       JMP finalLecturaArchivo
 
     errorLectura:
-      CALL printAX
-      printSpace
-      CMP errorLect, 1
-      JE errorLecturaMsgPrint
-      JMP finalLecturaArchivo
+      ; CALL printAX
+      ; printSpace
+      ; CMP errorLect, 1
+      ; JE errorLecturaMsgPrint
+      ; JMP finalLecturaArchivo
       errorLecturaMsgPrint:
-        MOV ah, 09h
-        lea dx, msgErrorLectura
-        int 21h
-        JMP finalLecturaArchivo
+        ; MOV ah, 09h
+        ; lea dx, msgErrorLectura
+        ; int 21h
+        ; JMP finalLecturaArchivo
 
   finalLecturaArchivo:
 
@@ -649,10 +690,10 @@ cargaDeNiveles proc near
   pushRegisters
   cicloCargaNiveles:
     CALL getPathNivel
-    MOV ah, 09h
-    lea dx, pathLectura
-    int 21h
-    CALL pressEnterContinueEco
+    ; MOV ah, 09h
+    ; lea dx, pathLectura
+    ; int 21h
+    ; CALL pressEnterContinueEco
     CALL lecturaNiveles
 
     CMP errorLect, 0
@@ -660,6 +701,7 @@ cargaDeNiveles proc near
     JMP finalCargaNiveles
 
     noSeCargoNivel:
+      CALL printErrorNivelVideo
       INC numNivelRaw
       JMP condicionCicloCargaNiveles
 
@@ -670,13 +712,13 @@ cargaDeNiveles proc near
   JMP cicloCargaNiveles
 
   limiteNiveles:
-    MOV ah, 09h
-    lea dx, msgLimiteNiveles
-    int 21h
-    MOV ah, 01h
-    int 21h
-    CMP al, 27 ; si dio escape
-    JE finalCargaNiveles
+    ; MOV ah, 09h
+    ; lea dx, msgLimiteNiveles
+    ; int 21h
+    ; MOV ah, 01h
+    ; int 21h
+    ; CMP al, 27 ; si dio escape
+    ; JE finalCargaNiveles
     MOV numNivelRaw, 0
     JMP cicloCargaNiveles
   finalCargaNiveles:
@@ -744,7 +786,7 @@ retardadorPantalla proc near
   MOV cx, 8192
   retardadorPantallaCiclo:
       PUSH cx
-      MOV cx, 1
+      MOV cx, 2
       retardadorPantallaCiclo2:
 
       loop retardadorPantallaCiclo2
@@ -869,6 +911,7 @@ movimientoSokoban proc near
   ;derecha = 77
   ;abajo = 80
   ;izquierda = 75
+  MOV teclaGuardada, 0
     CMP ah, 72
     JNE noPresionoArriba
     JMP presionoArriba
@@ -912,6 +955,7 @@ movimientoSokoban proc near
   noPresionoTecla:
   CMP al, 27
   JE salirJuego
+  MOV teclaGuardada, al
   JMP finalMovimientoSokoban
   salirJuego:
     MOV ax, 1
@@ -1071,15 +1115,48 @@ cicloGeneral proc near
 		CALL movimientoSokoban
 		CMP salir, 1
 		JE finalCicloGeneral
+    CALL capturadorOpcionesMenu
     CALL printEstadisticas
     CALL retardadorPantallaEstadisticas
 		CALL verificarColisiones
 		CALL imprimirMatrizVideo
+    CALL retardadorPantalla
 		JMP ciclo_CicloGeneral
   finalCicloGeneral:
   popRegisters
   ret
 cicloGeneral endp
+
+resetNivel proc near
+  pushRegisters
+  XOR ax, ax 
+  
+  MOV word ptr contadores[0], ax
+  MOV word ptr contadores[2], ax
+  MOV word ptr contadores[4], ax
+
+  MOV cx, 4
+    lea si, msgBlankContadores
+    lea di, msgPasos
+    ADD di, 8
+    CALL copyStringSIDI
+    lea si, msgBlankContadores
+    lea di, msgPush
+    ADD di, 10
+    CALL copyStringSIDI
+    lea si, msgBlankContadores
+    lea di, msgPush
+    ADD di, 10
+    CALL copyStringSIDI
+
+  CALL cargaDeNiveles  
+  
+  CALL buscarAKirstein
+
+  CALL hacerMatrizSinObjetosMoviles
+  popRegisters
+  ret
+resetNivel endp
 
 makeEstadisticas proc near
   pushRegisters
@@ -1154,6 +1231,11 @@ printEstadisticas proc near
   MOV dl, 51
   CALL imprimirStrVideo
 
+  lea si, msgTecladoAcerdaDe
+  MOV dh, 12
+  MOV dl, 51
+  CALL imprimirStrVideo
+
   lea si, msgTecladoAyuda
   MOV dh, 21
   MOV dl, 0
@@ -1214,7 +1296,7 @@ retardadorPantallaEstadisticas proc near
   MOV cx, 16144
   ciclo_RetardadorPantallaEstadisticas:
     PUSH cx
-      MOV cx, 6
+      MOV cx, 3
       retardadorPantallaEstadisticasCiclo2:
 
       loop retardadorPantallaEstadisticasCiclo2
@@ -1226,52 +1308,213 @@ retardadorPantallaEstadisticas endp
 
 capturadorOpcionesMenu proc near
   pushRegisters
+  CMP teclaGuardada, 0
+  JNE hayTeclaGuardada
+  JMP noPresionoTeclaAyudas
+  hayTeclaGuardada:
+  MOV al, teclaGuardada
+  ;al ->
+  ;ayuda  = H
+  ;acercaDe = M
+  ;reset = R
+  ;highscores = N
+  ;sig y ant nivel = S, A
+    OR al, 32; hacer mayuscula
+    CMP al, 'h'
+    JNE noPresionoAyuda
+    JMP presionoAyuda
+    noPresionoAyuda:
+      CMP al, 'm'
+      JNE noPresionoAcercaDe
+      JMP presionoAcercaDe
+      noPresionoAcercaDe:
+        CMP al, 'r'
+        JNE noPresionoReset
+        JMP presionoReset
+        noPresionoReset:    
+          CMP al, 'n'
+          JNE noPresionoHighScores
+          JMP presionoHighScores
+          noPresionoHighScores:
+            CMP al, 's'
+            JNE noPresionoSigNivel
+            JMP presionoSigNivel 
+            noPresionoSigNivel:
+              CMP al, 'a'
+              JNE noPresionoAntNivel
+              JMP presionoAntNivel 
+              noPresionoAntNivel:
+                JMP finalCapturadorOpcionesMenu
+    
+    presionoAyuda:
+      ;se recibe en el si el puntero a la matriz 
+      ;en el dh y dl se recibe filas y columnas 
+      ;en el CH se recibe la cantidad de filas
+      ;en el CL la cantidad de columnas
+      MOV dx, 0403h
+      MOV ch, 12
+      MOV cl, 44
+      lea si, msgVideoAyuda
+      call printMatrizEnVideoGeneric
+      call pressEnterContinueEco
+      JMP finalCapturadorOpcionesMenu
+    presionoAcercaDe:
+      MOV dx, 0403h
+      MOV ch, 12
+      MOV cl, 44
+      lea si, msgVideoAcercaDe
+      call printMatrizEnVideoGeneric
+      call pressEnterContinueEco
+      JMP finalCapturadorOpcionesMenu
+    presionoReset:
+      CALL resetNivel
+      JMP finalCapturadorOpcionesMenu
+    presionoHighScores:
+      
+      JMP finalCapturadorOpcionesMenu
+    presionoSigNivel:
+      INC numNivelRaw
+      CALL resetNivel
+      JMP finalCapturadorOpcionesMenu
+    presionoAntNivel:
+      CMP numNivelRaw, 0
+      JE nivelEsCero
+      DEC numNivelRaw
+      CALL resetNivel
+      nivelEsCero:
+      JMP finalCapturadorOpcionesMenu
+  noPresionoTeclaAyudas:
+  
+  finalCapturadorOpcionesMenu:
 
   popRegisters
   ret
 capturadorOpcionesMenu endp
 
-	inicio: 
+printMatrizEnVideoGeneric proc near
+  ;se recibe en el si el puntero a la matriz 
+  ;en el dh y dl se recibe filas y columnas 
+  ;en el CH se recibe la cantidad de filas
+  ;en el CL la cantidad de columnas
+  pushRegisters
+  XOR bx, bx
+  MOV var, si;guardar el inicio de la matriz
+  ciclo_PrintMatrizEnVideoGeneric:
+    MOV si, var
+    XOR ax, ax;calcular el numero de fila
+    or al, bl
+    MUL cl ; tamaño de columnas
+    ADD si, ax; sumar el numero de fila correspondiente
+    MOV ah, bl
+    ADD ah, dh
+    
+    pushRegisters
+      ;al, cantidad de columnas
+      ;ah, numero de fila
+      ;dl, numero de columna
+      MOV al, 80
+      MUL ah
+      XOR dh, dh
+      ADD ax, dx
+      shl ax, 1
+      mov di, ax ;posicion en la pantalla
+
+      mov  ax,0B800h
+      mov  es,ax
+
+      mov  cl, byte ptr[si]
+      xor ch, ch
+      inc si
+
+      cicloPrintFilaEnVideoGeneric:    ;Bucle que se encargara de pintar la string
+          mov  al, [si]        ;caracteres de la pantalla para limpiarla
+          mov  ah, 14          ;Fondo azul, letras blancas
+          OR ah, 10h
+          mov  es:[di], ax
+          inc  si             ;Pasamos a apuntar a la siguiente letra del saludo
+          inc  di
+          inc  di
+
+      LOOP cicloPrintFilaEnVideoGeneric
+      popRegisters
+    INC bl
+  CMP bl, ch
+  JB ciclo_PrintMatrizEnVideoGeneric
+
+
+  popRegisters
+  ret
+printMatrizEnVideoGeneric endp
+
+printErrorNivelVideo proc near
+  pushRegisters
+  CALL limpiarPantalla
+  ;Mover a la fila num 8 de msgVideoErrorNivel
+  ;el nivel con error 
+  push ds
+  pop es
+  cld
+  ;Mover el Niveles\sokoXXX.txt
+  lea si, pathLectura
+  ADD si, punteroPathLectura
+  lea di, msgVideoErrNivel
+  MOV ah, 8
+  MOV al, 44
+  MUL ah
+  ADD di, ax
+  ADD di, 7
+
+  MOV cx, 20
+  REP MOVSB
+
+  MOV dx, 0403h
+  MOV ch, 12
+  MOV cl, 44
+  lea si, msgVideoErrNivel
+  call printMatrizEnVideoGeneric
+  call pressEnterContinueEco
+  popRegisters
+  ret
+printErrorNivelVideo endp
+
+getDriveName proc near
+  pushRegisters
+  cicloGetDriveName:
+    MOV ah, 09h
+    lea dx, msgDigiteDrive
+    int 21h
+    printSpace
+    MOV ah, 01H
+    int 21h
+  JZ cicloGetDriveName
+  popRegisters
+  ret
+getDriveName endp
+
+copyStringSIDI proc near
+  ;en el di y si vienen los string y en el cx el largo
+  pushRegisters
+  push ds
+  pop es
+  cld
+  
+  REP MOVSB
+  popRegisters
+  ret
+copyStringSIDI endp
+
+  inicio: 
 	  
 	mov ax, datos
 	mov ds, ax
 	mov ax, pila
 	mov ss, ax
 	
-	printAcercaDe
-	CALL pressEnterContinueEco
 
-	CALL cargaDeNiveles
-  ;CALL getPathNivel
-  ;CALL lecturaNiveles
-  
-  ; lea di, matrizSokoban
-  ; CALL printMatrix
-  
-  ;CALL imprimirMatrizVideo
-	
-  CALL buscarAKirstein
-
-  CALL hacerMatrizSinObjetosMoviles
-  ; lea di, matrizSoloNivel
-  ; CALL printMatrix
-  
-  ; CALL printEstadisticas
-  ; MOV ah, 09h
-  ; lea dx, msgNivel
-  ; int 21h
-  ; MOV ah, 09h
-  ; lea dx, msgPasos
-  ; int 21h
-  ; MOV ah, 09h
-  ; lea dx, msgPush
-  ; int 21h
-  ; MOV ah, 09h
-  ; lea dx, msgNivelesResueltos
-  ; int 21h
-  ; CALL pressEnterContinueEco
+  CALL getDriveName
+	CALL resetNivel
   CALL cicloGeneral
-	mov  ax,4C00h
+  mov  ax,4C00h
 	int  21h
 
 codigo ends
