@@ -1,3 +1,72 @@
+; Este programa es un juego del sokoban con acceso a memoria de video   
+; 
+;        
+;                         
+;---------------------------------------------------------------------------------
+;                      Instituto Tecnologico de Costa Rica                    
+;                      
+;                      Ingeneria en computacion Plan 411
+;
+;                      Arquitectura De Computadores
+;
+;                      Kirstein Gatjens
+;
+;                      Andrew Jose Gutierrez Castro
+;
+;                      Carne: 2019068322
+;
+;                      Grupo: 2
+;---------------------------------------------------------------------------------
+
+;*********************************************************************************
+;                     Manual de Usuario
+;    Antes que nada es NECESARIO que exista la carpeta NIVELES a la PAR del ejecutable
+;    No se soportan Niveles sueltos a la par del ejecutable o algo por el estilo
+;    Un ejemplo del comando DIR en la carpeta del proyecto es:
+;    A:\Arqui\Sokoban>DIR 
+;    Directory of A:\Arqui\Sokoban\.
+;    .                  <DIR>               08-07-2020 15:18
+;    ..                 <DIR>               08-07-2020 15:10
+;    NIVELES            <DIR>               07-07-2020  0:27
+;    19068322.ASM                    41,496 08-07-2020 14:18
+;    19068322.EXE                     7,690 08-07-2020 14:19
+;    19068322.OBJ                     7,690 08-07-2020 14:18
+;    19068322.MAP                     7,690 08-07-2020 14:18
+;
+;    Primero en DOSBOX correr TASM 19068322.asm
+;    Seguidamente ejecutar  TLINK 19068322.obj
+;    Finalmente inicializar 19068322.EXE 
+;    Por ejemplo: ejecutar 19068322
+;
+;                 A:\Sokoban>19068322.exe 
+;                 A:\Sokoban>Digite la letra de su drive de DOSBOX: 
+;                 Aqui debe digitar la letra del disco, en mi caso es A           
+;
+;*********************************************************************************
+;
+;---------------------------------------------------------------------------------
+;Partes:
+;       A: Cargar los niveles del txt
+;       B: Imprimir en pantalla de video
+;       C: Moverse con las flechas del teclado
+;       D: Ejecutar los mensajes de acercade y ayuda con el teclado
+;       E: HighScores de cada nivel
+;Estado:
+; A = Concluida con exito             B = Concluida con problemas especificos
+; C = Concluida con problemas mayores D = Diseño del algoritmo pero no inicia
+; E = No implementado
+;----------------------------------------------------------------------------------
+; Partes importantes a considerar su estado:
+; +Cargar los niveles del txt ESTADO: A (CargarNiveles)
+; 
+; +Imprimir en pantalla de video ESTADO: A(imprimirMatrizVideo)
+;   
+; +Moverse con las flechas del teclado ESTADO: A (getKeyPress)
+;
+; +Ejecutar los mensajes de acercade y ayuda con el teclado ESTADO: A(capturadorOpcionesMenu)
+;
+; +HighScores de cada nivel ESTADO: E (Este no fue implementado)
+;-----------------------------------------------------------------------------------
 printENTER MACRO
     push ax
     push dx
@@ -62,7 +131,7 @@ datos segment
 
     AcerdaDe db "Solo debe ejecutar el programa y jugar.",10,13,7
     db "Para moverse presione las flechas y para salir ESC",10,13,7,'$'
-    msgDigiteDrive db "Digite la letra del nombre de su drive de DOSBOX: ",10,13,7,'$'
+    msgDigiteDrive db "Digite la letra de su drive de DOSBOX: ",10,13,7,'$'
     var dw ?
     msgErrorLectura db "Error en la lectura del archivo de origen$"
     msgLimiteNiveles db "Se buscaron mas niveles y no se pudo cargar ninguno, desea salir?",10,13,7
@@ -127,7 +196,7 @@ datos segment
 
     numNivelRaw dw 000
     numNivelStr db "0000", '$'
-    numMaxNivel dw 99
+    numMaxNivel dw 999
     numNivelBlank db "0000"
 
     indiceExterno db 20
@@ -774,11 +843,21 @@ imprimirFilaVideo proc near
   cicloPrintFilaVideo:    ;Bucle que se encargara de pintar la string
       mov  al, [si]        ;caracteres de la pantalla para limpiarla
       mov  ah, 15          ;Fondo azul, letras blancas
-      OR ah, 01h
       CMP al, byte ptr kirstein[2]
       JNE noEsKirstein
         MOV ah, 4
+        JMP printCaracarterFilaVideo
       noEsKirstein:
+      CMP al, muro
+      JNE noEsMuroVideoPrint
+        MOV ah, 9
+        JMP printCaracarterFilaVideo
+      noEsMuroVideoPrint:
+      CMP al, zonaEntrega
+      JNE noEsZonaEntreVideoPrint
+        MOV ah, 10
+      noEsZonaEntreVideoPrint:
+      printCaracarterFilaVideo:
       mov  es:[di], ax
       inc  si             ;Pasamos a apuntar a la siguiente letra del saludo
       inc  di
@@ -816,7 +895,7 @@ imprimirMatrizVideo endp
 retardadorPantalla proc near
      
   PUSH cx
-  MOV cx, 8192
+  MOV cx, 1
   retardadorPantallaCiclo:
       PUSH cx
       MOV cx, 1
@@ -936,9 +1015,11 @@ movimientoSokoban proc near
   pushRegisters
 
   cicloMovimientoSokoban:
-  CALL retardadorPantalla
+  ;CALL retardadorPantalla
   CALL getKeyPress
-  JNC noPresionoTecla
+  JC presionoTecla
+  JMP cicloMovimientoSokoban
+  presionoTecla:
   ;ah ->
   ;arriba  = 72
   ;derecha = 77
@@ -1338,10 +1419,10 @@ imprimirStrVideo endp
 
 retardadorPantallaEstadisticas proc near
   pushRegisters
-  MOV cx, 10
+  MOV cx, 1
   ciclo_RetardadorPantallaEstadisticas:
     PUSH cx
-      MOV cx, 16144
+      MOV cx, 1
       retardadorPantallaEstadisticasCiclo2:
 
       loop retardadorPantallaEstadisticasCiclo2
@@ -1471,9 +1552,9 @@ printMatrizEnVideoGeneric proc near
       xor ch, ch
       inc si
 
-      cicloPrintFilaEnVideoGeneric:    ;Bucle que se encargara de pintar la string
+      cicloPrintFilaEnVideoGeneric:;Bucle que se encargara de pintar la string
           mov  al, [si]        ;caracteres de la pantalla para limpiarla
-          mov  ah, 14          ;Fondo azul, letras blancas
+          mov  ah, 14          
           OR ah, 10h
           mov  es:[di], ax
           inc  si             ;Pasamos a apuntar a la siguiente letra del saludo
@@ -1539,10 +1620,10 @@ getDriveName proc near
     MOV ah, 01H
     int 21h
     JZ cicloGetDriveName
-    XOR al, 20h
-    CMP al, 'A'
+    OR al, 20h
+    CMP al, 'a'
     JB cicloGetDriveName
-    CMP al, 'Z'
+    CMP al, 'z'
     JA cicloGetDriveName
     MOV nombreDrive, al
   popRegisters

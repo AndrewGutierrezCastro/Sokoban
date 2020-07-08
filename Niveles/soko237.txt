@@ -1,0 +1,16 @@
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+M..M..MMM.....M.....MMM..M..M
+M.............M.............M
+MOMMM..M.MMMMMMMMMMM.M..MMMOM
+MMMOMM........M........MMOMMM
+M...M...M..M..M..M..M...M...M
+M...MMMMMMMM.....MMMMMMMM...M
+M..MM.M....M.....M....M.MM..M
+MM.........M.....M.........MM
+MM.M..M....M.....M....M..M.MM
+M..........M.....M..........M
+MMMMM.MMMMMM.....MMMMMM.MMMMM
+M...........................M
+M....X......X...X......X....M
+M....M......M.K.M......M....M
+MMMMMMMMMMMMMMMMMMMMMMMMMMMMM
