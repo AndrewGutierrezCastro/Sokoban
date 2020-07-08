@@ -112,12 +112,12 @@ datos segment
 
     msgVideoErrNivel db 43," ========================================= "
                      db 43,"| Error Lectura:        Sokoban TEC Arqui |"
-                     db 43,"| Ocurrio un error con la lectura de un   |"
-                     db 43,"| nivel                                   |"
+                     db 43,"| Error con la lectura de un nivel, tiene |"
+                     db 43,"| diferente numero de cajas y entregas o  |"
+                     db 43,"| el nivel no existe.....                 |"
                      db 43,"|    +Presione Enter para intentar leer   |"
                      db 43,"|     el siguiente nivel                  |"
                      db 43,"|    +Error con el nivel:                 |"
-                     db 43,"|                                         |"
                      db 43,"|                                         |"
                      db 43,"|                                         |"
                      db 43,"| Semestre I   -*ENTER PARA SEGUIR*- 2020 |"
@@ -125,10 +125,10 @@ datos segment
     ;pasos, push, nivelesConcluidos
     errorLect db 0 ; 1 error lectura Nivel, 0 sin errores
 
-    numNivelRaw dw 067
+    numNivelRaw dw 000
     numNivelStr db "0000", '$'
-    numMaxNivel dw 999
-
+    numMaxNivel dw 99
+    numNivelBlank db "0000"
 
     indiceExterno db 20
     buffer db 50 dup('.');para leer un nivel de 20 fila y 50 columnas
@@ -153,10 +153,14 @@ datos segment
     N db 20
     M db 52
     muro db 'M'
-    espacio db '.'
+    espacio db ' '
     caja db 'X'
     zonaEntrega db 'O'
     cajasEntregadas db 0
+    numCajas db 0
+    numZonasDeEntrega db 0
+
+    cajasEnPosicion db 0
     ;movimientoSokoban
     x db 0 
     y db 0
@@ -175,13 +179,13 @@ codigo segment
 
 pressEnterContinueEco proc near
   PUSH ax
+  MOV teclaGuardada, 0
   XOR ax, ax
   MOV ah, 01h
   noPressEnter:
   int 21h
   CMP al, 13
   JNE noPressEnter
-
   POP ax  
   ret
 pressEnterContinueEco endp
@@ -277,6 +281,8 @@ lecturaNiveles proc near
   PUSH cx
   PUSH dx
   MOV errorLect, 0
+  MOV numCajas, 0
+  MOV numZonasDeEntrega, 0
   lea dx, pathLectura
   MOV ax, 3D00h
   int 21h    
@@ -324,6 +330,12 @@ lecturaNiveles proc near
       JMP cicloLectura
         
     cerrarLecturaArhivo:
+      MOV al, numZonasDeEntrega
+      CMP numCajas, al
+      JE igualNumeroCajazZonas
+      MOV errorLect, 1
+      JMP errorLectura
+      igualNumeroCajazZonas:
       MOV ah, indiceExterno
       MOV numFilasCargadas, ah
       MOV ah, 3Eh
@@ -366,9 +378,20 @@ revisarFilaLeida proc near
   ;MOV ah, 02h
   cicloRevisarFilaLeida:
 
-    ;MOV dl, byte ptr buffer[bx]
-    ;int 21h
+    CMP byte ptr buffer[bx], 'X';Conteo de Cajas y zonas de entrega
+      JNE noSumarCaja
+      INC numCajas
+      noSumarCaja:
+        CMP byte ptr buffer[bx], 'O'
+          JNE noSumarZonaEntrega
+          INC numZonasDeEntrega
+          noSumarZonaEntrega:
     
+    CMP byte ptr buffer[bx], '.'
+    JNE noEsElEspacio
+    MOV al, espacio
+    MOV byte ptr buffer[bx], al
+    noEsElEspacio:
     CMP byte ptr buffer[bx], 13; revisar si leyo mas de una fila
     JE leyoMasDeUnaFila
     INC bx
@@ -701,13 +724,18 @@ cargaDeNiveles proc near
     JMP finalCargaNiveles
 
     noSeCargoNivel:
-      CALL printErrorNivelVideo
+
+      CALL printErrorNivelVideo  
       INC numNivelRaw
       JMP condicionCicloCargaNiveles
 
     condicionCicloCargaNiveles:
+      lea si,numNivelBlank
+      lea di, numNivelStr
+      MOV cx, 4
+      CALL copyStringSIDI
       MOV ax, numNivelRaw
-      CMP ax, numMaxNivel
+      CMP ax, numMaxNivel    
       JA limiteNiveles
   JMP cicloCargaNiveles
 
@@ -719,7 +747,8 @@ cargaDeNiveles proc near
     ; int 21h
     ; CMP al, 27 ; si dio escape
     ; JE finalCargaNiveles
-    MOV numNivelRaw, 0
+    XOR ax, ax
+    MOV numNivelRaw, ax
     JMP cicloCargaNiveles
   finalCargaNiveles:
   popRegisters
@@ -744,8 +773,12 @@ imprimirFilaVideo proc near
 
   cicloPrintFilaVideo:    ;Bucle que se encargara de pintar la string
       mov  al, [si]        ;caracteres de la pantalla para limpiarla
-      mov  ah, 0          ;Fondo azul, letras blancas
-      OR ah, 07h
+      mov  ah, 15          ;Fondo azul, letras blancas
+      OR ah, 01h
+      CMP al, byte ptr kirstein[2]
+      JNE noEsKirstein
+        MOV ah, 4
+      noEsKirstein:
       mov  es:[di], ax
       inc  si             ;Pasamos a apuntar a la siguiente letra del saludo
       inc  di
@@ -786,7 +819,7 @@ retardadorPantalla proc near
   MOV cx, 8192
   retardadorPantallaCiclo:
       PUSH cx
-      MOV cx, 2
+      MOV cx, 1
       retardadorPantallaCiclo2:
 
       loop retardadorPantallaCiclo2
@@ -1116,11 +1149,13 @@ cicloGeneral proc near
 		CMP salir, 1
 		JE finalCicloGeneral
     CALL capturadorOpcionesMenu
-    CALL printEstadisticas
-    CALL retardadorPantallaEstadisticas
+    
 		CALL verificarColisiones
 		CALL imprimirMatrizVideo
     CALL retardadorPantalla
+    CALL printEstadisticas
+    CALL retardadorPantallaEstadisticas
+    CALL revisarGaneNivel
 		JMP ciclo_CicloGeneral
   finalCicloGeneral:
   popRegisters
@@ -1133,9 +1168,13 @@ resetNivel proc near
   
   MOV word ptr contadores[0], ax
   MOV word ptr contadores[2], ax
-  MOV word ptr contadores[4], ax
+  ;MOV word ptr contadores[4], ax
 
   MOV cx, 4
+    lea si, msgBlankContadores
+    lea di, msgNivel
+    ADD di, 8
+    CALL copyStringSIDI
     lea si, msgBlankContadores
     lea di, msgPasos
     ADD di, 8
@@ -1145,15 +1184,21 @@ resetNivel proc near
     ADD di, 10
     CALL copyStringSIDI
     lea si, msgBlankContadores
-    lea di, msgPush
-    ADD di, 10
+    lea di, msgNivelesResueltos
+    ADD di, 20
     CALL copyStringSIDI
 
   CALL cargaDeNiveles  
-  
+
+ ; CALL cambiarMatrizLeida
+
   CALL buscarAKirstein
 
   CALL hacerMatrizSinObjetosMoviles
+
+  
+  finalResetNivel:
+
   popRegisters
   ret
 resetNivel endp
@@ -1278,8 +1323,8 @@ imprimirStrVideo proc near
 
   cicloImprimirStrVideo:    ;Bucle que se encargara de pintar la string
       mov  al, [si]        ;caracteres de la pantalla para limpiarla
-      mov  ah, 0          ;Fondo azul, letras blancas
-      OR ah, 07h
+      mov  ah, 3         ;Fondo azul, letras blancas
+      ;
       mov  es:[di], ax
       inc  si             ;Pasamos a apuntar a la siguiente letra del saludo
       inc  di
@@ -1293,10 +1338,10 @@ imprimirStrVideo endp
 
 retardadorPantallaEstadisticas proc near
   pushRegisters
-  MOV cx, 16144
+  MOV cx, 10
   ciclo_RetardadorPantallaEstadisticas:
     PUSH cx
-      MOV cx, 3
+      MOV cx, 16144
       retardadorPantallaEstadisticasCiclo2:
 
       loop retardadorPantallaEstadisticasCiclo2
@@ -1463,7 +1508,14 @@ printErrorNivelVideo proc near
   MUL ah
   ADD di, ax
   ADD di, 7
-
+  ADD di, 2
+  mov dh, nombreDrive
+  MOV byte ptr [di], dh
+  MOV byte ptr [di+1], ':'
+  MOV byte ptr [di+2], '\'
+  MOV byte ptr [di+3], '.'
+  MOV byte ptr [di+4], '.'
+  ADD di, 5
   MOV cx, 20
   REP MOVSB
 
@@ -1480,13 +1532,19 @@ printErrorNivelVideo endp
 getDriveName proc near
   pushRegisters
   cicloGetDriveName:
+    printENTER
     MOV ah, 09h
     lea dx, msgDigiteDrive
     int 21h
-    printSpace
     MOV ah, 01H
     int 21h
-  JZ cicloGetDriveName
+    JZ cicloGetDriveName
+    XOR al, 20h
+    CMP al, 'A'
+    JB cicloGetDriveName
+    CMP al, 'Z'
+    JA cicloGetDriveName
+    MOV nombreDrive, al
   popRegisters
   ret
 getDriveName endp
@@ -1502,6 +1560,110 @@ copyStringSIDI proc near
   popRegisters
   ret
 copyStringSIDI endp
+
+revisarGaneNivel proc near
+  pushRegisters
+  MOV cajasEntregadas, 0
+  cicloExternoRevisarGaneNivel:
+    lea si, matrizSokoban
+    MOV al, bl
+    MUL M
+    ADD si, ax
+    MOV cl, byte ptr[si]
+    XOR ch, ch
+    cicloInternoRevisarGaneNivel:
+      PUSH cx
+      lea si, matrizSoloNivel
+      MOV ch, bl
+      DEC cl ;decrementar porque esta basado en 0 el index
+      CALL axezador ;tenemos el elemento de la matriz sin limpia
+      CMP al, zonaEntrega;si es una zona de entrega entonces revisar
+      JE revisarSiHayCaja;si tiene una caja en esa posicion en la matrizSokoban
+      JMP condicionCicloInternoRevisarGaneNivel
+      revisarSiHayCaja:
+        lea si, matrizSokoban
+        CALL axezador
+        CMP al, caja
+        JE sumarCajaEnPos
+        JMP noHayCaja
+        sumarCajaEnPos:
+          INC cajasEntregadas
+        noHayCaja:
+      condicionCicloInternoRevisarGaneNivel:
+      POP cx
+      LOOP cicloInternoRevisarGaneNivel
+  INC bl
+  CMP bl, numFilasCargadas
+  JB cicloExternoRevisarGaneNivel
+  MOV al, numCajas
+  CMP cajasEntregadas, al
+  JNE noHaGanado
+    INC word ptr contadores[4]
+    INC numNivelRaw
+    CALL resetNivel
+  noHaGanado:
+  popRegisters
+  ret
+revisarGaneNivel endp
+
+cambiarMatrizLeida proc near
+  ;este procedimiento cambia la matriz leida a una
+  ;matriz adaptada
+  pushRegisters
+  XOR bx, bx
+  cicloExternoCambiarMatrizLeida:
+    lea si, matrizSokoban
+    MOV al, bl
+    MUL M
+    ADD si, ax
+    MOV cl, byte ptr[si]
+    XOR ch, ch
+    cicloInternoCambiarMatrizLeida:
+      PUSH cx
+      lea si, matrizSokoban
+      MOV ch, bl
+      DEC cl ;decrementar porque esta basado en 0 el index
+      CALL axezador 
+      CMP al, 'M'
+      JE cambiarMuro
+      JMP noCambiarMuro
+      cambiarMuro:
+        JMP condicionCicloInternoRevisarGaneNivel
+        noCambiarMuro:
+        CMP al, '.'
+        JE cambiarEspacio
+        JMP noCambiarEspacio
+        cambiarEspacio:
+          
+          MOV al, espacio
+          lea si, matrizSokoban
+          CALL almacenador
+
+          JMP condicionCicloInternoRevisarGaneNivel
+          noCambiarEspacio:
+          CMP al, 'X'
+          JE cambiarCaja
+          JMP noCambiarCaja
+          cambiarCaja:
+          JMP condicionCicloInternoRevisarGaneNivel
+          noCambiarCaja:
+            CMP al, 'O'
+            JE cambiarZonaEntrega
+            JMP noCambiarZonaEntrega
+            cambiarZonaEntrega:
+            JMP condicionCicloInternoRevisarGaneNivel
+            noCambiarZonaEntrega:
+
+      POP cx
+      LOOP cicloInternoCambiarMatrizLeida
+  INC bl
+  CMP bl, numFilasCargadas
+  JB cicloExternoCambiarMatrizLeida
+
+  popRegisters
+  ret
+  ret
+cambiarMatrizLeida endp
 
   inicio: 
 	  
